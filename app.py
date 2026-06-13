@@ -1,12 +1,45 @@
 """AgentLens web app — scan Shopify stores + monitor a watchlist."""
 
-from flask import Flask, request, jsonify, send_from_directory
+import os
+
+from flask import Flask, Response, request, jsonify, send_from_directory
 
 import db
 import monitor
 import scanner
 
 app = Flask(__name__, static_folder="static")
+
+# ---------- auth ----------
+# Public: homepage + scan (lead magnet). Everything else needs the admin
+# password. Password comes from admin_pass file next to the code (server)
+# or AGENTLENS_PASS env var. If neither exists (local dev), auth is off.
+OPEN_PATHS = {"/", "/scan", "/favicon.ico"}
+_PASS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "admin_pass")
+
+
+def _admin_pass():
+    if os.environ.get("AGENTLENS_PASS"):
+        return os.environ["AGENTLENS_PASS"]
+    try:
+        with open(_PASS_FILE) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+@app.before_request
+def _require_auth():
+    if request.path in OPEN_PATHS:
+        return None
+    pw = _admin_pass()
+    if pw is None:
+        return None  # auth not configured (local dev)
+    a = request.authorization
+    if a and a.password == pw:
+        return None
+    return Response("Authentication required", 401,
+                    {"WWW-Authenticate": 'Basic realm="AgentLens admin"'})
 
 
 @app.route("/")

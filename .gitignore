@@ -2,3 +2,4 @@
 __pycache__/
 debug_*.py
 scanner_sync.py
+admin_pass
