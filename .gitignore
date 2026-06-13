@@ -1,0 +1,4 @@
+﻿agentlens.db
+__pycache__/
+debug_*.py
+scanner_sync.py

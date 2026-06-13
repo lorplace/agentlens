@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Magnesium Glycinate 400mg | MockBrand</title>
+<meta property="og:title" content="Magnesium Glycinate 400mg">
+<meta property="og:image" content="http://127.0.0.1:8765/img/mag.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Magnesium Glycinate 400mg",
+  "image": "http://127.0.0.1:8765/img/mag.jpg",
+  "description": "High-absorption magnesium for sleep and recovery.",
+  "brand": {"@type": "Brand", "name": "MockBrand"},
+  "offers": {
+    "@type": "Offer",
+    "price": "24.99",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+</head>
+<body>
+<h1>Magnesium Glycinate 400mg</h1>
+<span class="product-price">$24.99</span>
+</body>
+</html>

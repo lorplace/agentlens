@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentLens — AI Agent Readiness Scanner</title>
+<style>
+  :root{
+    --bg:#0c0f14; --card:#151a22; --card2:#1b212c; --text:#e8ecf2; --muted:#8b95a5;
+    --accent:#4f8cff; --pass:#34c98e; --warn:#e8b339; --fail:#f25c5c; --info:#8b95a5;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh}
+  .wrap{max-width:860px;margin:0 auto;padding:48px 20px}
+  header{text-align:center;margin-bottom:36px}
+  .logo{font-size:28px;font-weight:700;letter-spacing:-.5px}
+  .logo span{color:var(--accent)}
+  .tag{color:var(--muted);margin-top:8px;font-size:15px}
+  .searchbar{display:flex;gap:10px;margin:28px auto 0;max-width:620px}
+  .searchbar input{flex:1;background:var(--card);border:1px solid #2a3242;color:var(--text);
+    padding:14px 18px;border-radius:var(--radius);font-size:16px;outline:none}
+  .searchbar input:focus{border-color:var(--accent)}
+  .searchbar button{background:var(--accent);border:0;color:#fff;font-weight:600;font-size:16px;
+    padding:14px 26px;border-radius:var(--radius);cursor:pointer}
+  .searchbar button:disabled{opacity:.5;cursor:wait}
+  #status{text-align:center;color:var(--muted);margin-top:18px;min-height:24px}
+  .hidden{display:none}
+  .scorecard{display:flex;align-items:center;gap:28px;background:var(--card);
+    border-radius:var(--radius);padding:28px;margin-top:34px}
+  .gauge{position:relative;width:130px;height:130px;flex-shrink:0}
+  .gauge svg{transform:rotate(-90deg)}
+  .gauge .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge .num b{font-size:34px}
+  .gauge .num small{color:var(--muted);font-size:12px}
+  .scoremeta h2{font-size:20px;margin-bottom:6px}
+  .scoremeta p{color:var(--muted);font-size:14px}
+  .grade{display:inline-block;padding:2px 12px;border-radius:8px;font-weight:700;margin-left:8px}
+  .cat{margin-top:26px}
+  .cat h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px}
+  .check{background:var(--card);border-radius:var(--radius);padding:16px 18px;margin-bottom:10px;
+    display:flex;gap:14px;align-items:flex-start}
+  .dot{width:12px;height:12px;border-radius:50%;margin-top:6px;flex-shrink:0}
+  .dot.pass{background:var(--pass)} .dot.warn{background:var(--warn)}
+  .dot.fail{background:var(--fail)} .dot.info{background:var(--info)}
+  .check b{font-size:15px}
+  .check .pts{margin-left:auto;color:var(--muted);font-size:13px;white-space:nowrap;padding-top:2px}
+  .check p{color:var(--muted);font-size:14px;margin-top:3px}
+  .check .fix{margin-top:8px;font-size:14px;color:var(--text);background:var(--card2);
+    border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 8px 8px 0}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:48px}
+  .tabs{display:flex;gap:8px;justify-content:center;margin-top:22px}
+  .tabs button{background:var(--card);border:1px solid #2a3242;color:var(--muted);
+    padding:8px 20px;border-radius:10px;cursor:pointer;font-size:14px}
+  .tabs button.active{color:var(--text);border-color:var(--accent)}
+  .watchbtn{background:transparent;border:1px solid var(--accent);color:var(--accent);
+    padding:8px 16px;border-radius:10px;cursor:pointer;font-size:14px;margin-top:10px}
+  .watchbtn:disabled{opacity:.5}
+  .storerow{display:flex;align-items:center;gap:14px;background:var(--card);
+    border-radius:var(--radius);padding:14px 18px;margin-bottom:10px}
+  .storerow .badge{background:var(--fail);color:#fff;border-radius:10px;
+    padding:1px 9px;font-size:12px;font-weight:700}
+  .storerow .sc{margin-left:auto;font-weight:700}
+  .storerow small{color:var(--muted)}
+  .storerow .rm{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px}
+  .alert{background:var(--card);border-left:3px solid var(--fail);
+    border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:14px}
+  .alert.improvement{border-left-color:var(--pass)}
+  .alert small{color:var(--muted)}
+  .mbar{display:flex;align-items:center;gap:12px;margin:24px 0 14px}
+  .mbar h3{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .mbar button{margin-left:auto;background:var(--accent);border:0;color:#fff;
+    padding:8px 16px;border-radius:10px;cursor:pointer;font-size:14px}
+  .mbar button:disabled{opacity:.5;cursor:wait}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Agent<span>Lens</span></div>
+    <div class="tag">Can AI shopping agents see your store? Scan any Shopify store in seconds.</div>
+    <div class="searchbar">
+      <input id="url" type="text" placeholder="yourstore.com" spellcheck="false"
+             onkeydown="if(event.key==='Enter')runScan()">
+      <button id="btn" onclick="runScan()">Scan</button>
+    </div>
+    <div id="status"></div>
+    <div class="tabs">
+      <button id="tabScan" class="active" onclick="showTab('scan')">Scan</button>
+      <button id="tabMon" onclick="showTab('mon')">Monitoring <span id="alertCount"></span></button>
+    </div>
+  </header>
+
+  <div id="monView" class="hidden">
+    <div class="mbar"><h3>Watched stores</h3>
+      <button id="rescanBtn" onclick="runMonitor()">Re-scan all now</button></div>
+    <div id="storeList"></div>
+    <div class="mbar"><h3>Alerts</h3></div>
+    <div id="alertList"></div>
+  </div>
+
+  <div id="report" class="hidden">
+    <div class="scorecard">
+      <div class="gauge">
+        <svg width="130" height="130" viewBox="0 0 130 130">
+          <circle cx="65" cy="65" r="56" fill="none" stroke="#252d3a" stroke-width="12"/>
+          <circle id="arc" cx="65" cy="65" r="56" fill="none" stroke="#4f8cff" stroke-width="12"
+                  stroke-linecap="round" stroke-dasharray="352" stroke-dashoffset="352"/>
+        </svg>
+        <div class="num"><b id="scoreNum">0</b><small>/ 100</small></div>
+      </div>
+      <div class="scoremeta">
+        <h2 id="storeName"></h2>
+        <p id="summary"></p>
+        <button id="watchBtn" class="watchbtn hidden" onclick="watchStore()">+ Watch this store</button>
+      </div>
+    </div>
+    <div id="cats"></div>
+  </div>
+
+  <footer>AgentLens MVP — agent-readiness scanning for Shopify stores</footer>
+</div>
+
+<script>
+const COLORS = {pass:'#34c98e', warn:'#e8b339', fail:'#f25c5c', info:'#8b95a5'};
+
+async function runScan(){
+  const url = document.getElementById('url').value.trim();
+  if(!url) return;
+  const btn = document.getElementById('btn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  document.getElementById('report').classList.add('hidden');
+  status.textContent = 'Scanning — fetching feed, robots.txt, product pages…';
+  try{
+    const r = await fetch('/scan?url=' + encodeURIComponent(url));
+    const data = await r.json();
+    if(data.error){ status.textContent = data.error; return; }
+    render(data);
+    status.textContent = '';
+  }catch(e){
+    status.textContent = 'Scan failed: ' + e.message;
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function render(d){
+  document.getElementById('report').classList.remove('hidden');
+  const unsupported = d.unsupported;
+  lastScannedStore = d.store;
+  const wb = document.getElementById('watchBtn');
+  wb.classList.toggle('hidden', !!unsupported);
+  wb.disabled = false; wb.textContent = '+ Watch this store';
+  const gradeChip = unsupported
+    ? `<span class="grade" style="background:#8b95a522;color:#8b95a5">N/A</span>`
+    : `<span class="grade" style="background:${gradeColor(d.score)}22;color:${gradeColor(d.score)}">${d.grade}</span>`;
+  document.getElementById('storeName').innerHTML =
+    d.store.replace(/^https?:\/\//,'') + gradeChip;
+  const fails = d.checks.filter(c=>c.status==='fail').length;
+  const warns = d.checks.filter(c=>c.status==='warn').length;
+  document.getElementById('summary').textContent = unsupported
+    ? 'No Shopify product feed detected — this may not be a Shopify store, or its storefront API is disabled. AgentLens scans Shopify stores; the checks below are informational only and the store is not graded.'
+    : `Shopify store detected. ${fails} critical issue(s), ${warns} warning(s). Scanned in ${d.duration_s}s.`;
+
+  // gauge
+  const arc = document.getElementById('arc');
+  arc.style.transition = 'stroke-dashoffset 1s ease';
+  if(unsupported){
+    arc.style.stroke = '#8b95a5';
+    requestAnimationFrame(()=>{ arc.style.strokeDashoffset = 352; });
+    document.getElementById('scoreNum').textContent = '—';
+  } else {
+    arc.style.stroke = gradeColor(d.score);
+    requestAnimationFrame(()=>{ arc.style.strokeDashoffset = 352 - 352 * d.score / 100; });
+    animateNum(d.score);
+  }
+
+  // categories
+  const cats = {};
+  d.checks.forEach(c => { (cats[c.category] = cats[c.category] || []).push(c); });
+  const el = document.getElementById('cats');
+  el.innerHTML = '';
+  for(const [cat, items] of Object.entries(cats)){
+    const div = document.createElement('div');
+    div.className = 'cat';
+    div.innerHTML = `<h3>${cat}</h3>` + items.map(c => `
+      <div class="check">
+        <div class="dot ${c.status}"></div>
+        <div style="flex:1">
+          <b>${c.title}</b>
+          <p>${c.detail}</p>
+          ${c.fix ? `<div class="fix">${c.fix}</div>` : ''}
+        </div>
+        <div class="pts">${c.points}/${c.max_points}</div>
+      </div>`).join('');
+    el.appendChild(div);
+  }
+}
+
+function gradeColor(s){ return s>=75 ? COLORS.pass : s>=50 ? COLORS.warn : COLORS.fail; }
+
+function animateNum(target){
+  const el = document.getElementById('scoreNum');
+  let cur = 0;
+  const step = ()=>{ cur = Math.min(target, cur + Math.ceil(target/30));
+    el.textContent = cur; if(cur < target) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+// ---------- monitoring ----------
+let lastScannedStore = null;
+
+function showTab(t){
+  document.getElementById('tabScan').classList.toggle('active', t==='scan');
+  document.getElementById('tabMon').classList.toggle('active', t==='mon');
+  document.getElementById('monView').classList.toggle('hidden', t!=='mon');
+  if(t==='mon'){ loadMonitor(); }
+  else if(lastScannedStore===null){ document.getElementById('report').classList.add('hidden'); }
+  if(t==='scan' && lastScannedStore!==null){ document.getElementById('report').classList.remove('hidden'); }
+  if(t==='mon'){ document.getElementById('report').classList.add('hidden'); }
+}
+
+async function watchStore(){
+  if(!lastScannedStore) return;
+  const btn = document.getElementById('watchBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  await fetch('/watch', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({url: lastScannedStore})});
+  btn.textContent = '✓ Watching';
+}
+
+async function loadMonitor(){
+  const [stores, alerts] = await Promise.all([
+    fetch('/stores').then(r=>r.json()),
+    fetch('/alerts').then(r=>r.json())]);
+
+  document.getElementById('storeList').innerHTML = stores.length ? stores.map(s=>`
+    <div class="storerow">
+      <b>${s.url}</b>
+      ${s.unseen_alerts ? `<span class="badge">${s.unseen_alerts} new</span>` : ''}
+      <small>${s.last_scanned ? 'last scan ' + s.last_scanned.slice(0,16).replace('T',' ') : 'never scanned'}</small>
+      <span class="sc" style="color:${s.last_score!=null ? gradeColor(s.last_score) : 'var(--muted)'}">
+        ${s.last_score!=null ? s.last_score + ' ' + s.last_grade : '—'}</span>
+      <button class="rm" title="Stop watching" onclick="unwatch('${s.url}')">✕</button>
+    </div>`).join('')
+    : '<p style="color:var(--muted)">No stores watched yet. Scan a store, then click “Watch this store”.</p>';
+
+  document.getElementById('alertList').innerHTML = alerts.length ? alerts.map(a=>`
+    <div class="alert ${a.severity}">
+      <b>${a.url}</b> — ${a.summary}
+      ${(a.detail.regressions||[]).map(r=>`<div><small>↓ ${r.check}: ${r.from} → ${r.to}. ${r.fix||''}</small></div>`).join('')}
+      <div><small>${a.created_at.slice(0,16).replace('T',' ')}</small></div>
+    </div>`).join('')
+    : '<p style="color:var(--muted)">No alerts. That\'s the goal.</p>';
+
+  fetch('/alerts/seen', {method:'POST'});
+  updateAlertCount(0);
+}
+
+async function runMonitor(){
+  const btn = document.getElementById('rescanBtn');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  try{ await fetch('/run-monitor', {method:'POST'}); }
+  finally{ btn.disabled = false; btn.textContent = 'Re-scan all now'; loadMonitor(); }
+}
+
+function updateAlertCount(n){
+  document.getElementById('alertCount').textContent = n ? `(${n})` : '';
+}
+
+// unseen-alert badge on load
+fetch('/stores').then(r=>r.json()).then(st=>{
+  updateAlertCount(st.reduce((a,s)=>a+(s.unseen_alerts||0),0));
+}).catch(()=>{});
+
+async function unwatch(url){
+  await fetch('/unwatch', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({url})});
+  loadMonitor();
+}
+</script>
+</body>
+</html>
