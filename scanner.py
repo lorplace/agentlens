@@ -40,16 +40,25 @@ def _get(session, url, **kw):
         return None
 
 
+# Phrases that appear ONLY on real challenge interstitials, not on normal
+# pages that merely sit behind Cloudflare/Akamai. (Earlier markers like
+# "challenge-platform" / "/cdn-cgi/challenge" were too broad — Cloudflare
+# injects those scripts into normal pages too, which false-flagged Gymshark.)
 CHALLENGE_MARKERS = (
-    "cf-browser-verification", "challenge-platform", "/cdn-cgi/challenge",
-    "just a moment", "checking your browser", "captcha", "are you human",
-    "enable javascript and cookies to continue", "px-captcha",
-    "access denied", "request unsuccessful", "incapsula",
+    "cf-browser-verification", "just a moment...", "checking your browser before",
+    "enable javascript and cookies to continue", "please verify you are a human",
+    "px-captcha", "request unsuccessful. incapsula", "attention required! | cloudflare",
+    "ddos protection by", "verifying you are human. this may take a few seconds",
 )
+# Real interstitials are small; a full storefront page is large. Only treat a
+# marker hit as blocked when the page is also small enough to be an interstitial.
+CHALLENGE_MAX_BYTES = 200_000
 
 
 def _looks_blocked(html):
     """True if the HTML is a bot-challenge / WAF interstitial, not real content."""
+    if len(html) > CHALLENGE_MAX_BYTES:
+        return False
     low = html.lower()
     return any(m in low for m in CHALLENGE_MARKERS)
 
