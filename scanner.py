@@ -40,6 +40,20 @@ def _get(session, url, **kw):
         return None
 
 
+CHALLENGE_MARKERS = (
+    "cf-browser-verification", "challenge-platform", "/cdn-cgi/challenge",
+    "just a moment", "checking your browser", "captcha", "are you human",
+    "enable javascript and cookies to continue", "px-captcha",
+    "access denied", "request unsuccessful", "incapsula",
+)
+
+
+def _looks_blocked(html):
+    """True if the HTML is a bot-challenge / WAF interstitial, not real content."""
+    low = html.lower()
+    return any(m in low for m in CHALLENGE_MARKERS)
+
+
 PRODUCT_LINK_RE = re.compile(
     r'href=["\']((?:https?://[^"\'>]+)?/(?:products?|p|item|shop)/[a-zA-Z0-9\-_/.%]+)["\']')
 PRODUCT_LOC_RE = re.compile(r"/(?:products?|p|item)/")
@@ -147,16 +161,32 @@ def scan(store_url):
     # Resolve canonical host (e.g. gymshark.com -> www.gymshark.com). Apex
     # domains sometimes 301 product URLs to checkout subdomains with no markup.
     home_html = None
+    blocked = False
     r = _get(s, base)
-    if r is None or r.status_code in (403, 429, 503):
+    if r is None or r.status_code in (403, 429, 503) or (
+            r.status_code == 200 and _looks_blocked(r.text)):
         # bot-challenged on the honest UA — retry the whole scan as a browser
         s.headers["User-Agent"] = BROWSER_UA
         r = _get(s, base)
-    if r is not None and r.status_code == 200:
+    if r is not None and r.status_code == 200 and _looks_blocked(r.text):
+        blocked = True
+    if r is not None and r.status_code == 200 and not blocked:
         home_html = r.text
         rp = urlparse(r.url)
         if rp.netloc:
             base = f"{rp.scheme}://{rp.netloc}"
+
+    if blocked:
+        return {
+            "store": base,
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+            "duration_s": round(time.time() - start, 1),
+            "score": 0, "grade": "N/A",
+            "is_shopify": False, "mode": "blocked",
+            "blocked": True, "unsupported": False,
+            "product_page_tested": None,
+            "checks": [], "fixes": [],
+        }
 
     # ---------- 1. Platform + feed access (25 pts) ----------
     products_json = None
@@ -445,6 +475,7 @@ def scan(store_url):
         "grade": grade,
         "is_shopify": bool(products_json),
         "mode": "shopify" if products_json else "generic",
+        "blocked": False,
         "unsupported": not products_json and not product_html,
         "product_page_tested": product_url,
         "checks": [c.as_dict() for c in checks],

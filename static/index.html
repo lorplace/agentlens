@@ -170,7 +170,7 @@ async function runScan(){
 
 function render(d){
   document.getElementById('report').classList.remove('hidden');
-  const unsupported = d.unsupported;
+  const unsupported = d.unsupported || d.blocked;
   lastScannedStore = d.store;
   const wb = document.getElementById('watchBtn');
   wb.classList.toggle('hidden', !!unsupported);
@@ -183,7 +183,9 @@ function render(d){
     d.store.replace(/^https?:\/\//,'') + gradeChip;
   const fails = d.checks.filter(c=>c.status==='fail').length;
   const warns = d.checks.filter(c=>c.status==='warn').length;
-  document.getElementById('summary').textContent = unsupported
+  document.getElementById('summary').textContent = d.blocked
+    ? 'This store sits behind a bot-protection wall (e.g. Cloudflare) or renders only via JavaScript, so AgentLens — like many AI shopping agents — could not read it. That itself is an agent-visibility risk worth noting. Not graded.'
+    : unsupported
     ? 'Could not find a product page to inspect — the site may be blocking bots or may not be a storefront. Not graded.'
     : `${d.mode === 'generic' ? 'Generic storefront scan (no Shopify feed detected). ' : 'Shopify store detected. '}${fails} critical issue(s), ${warns} warning(s). Scanned in ${d.duration_s}s.`;
 
