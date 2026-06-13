@@ -12,6 +12,8 @@ from urllib.parse import urlparse, urljoin
 import requests
 
 UA = "AgentLensScanner/0.1 (+agent-readiness audit; contact: owner)"
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 TIMEOUT = 10
 
 # AI agent crawlers that matter for agentic commerce visibility
@@ -32,11 +34,38 @@ OFFER_FIELDS_RECOMMENDED = ["shippingDetails", "hasMerchantReturnPolicy"]
 
 def _get(session, url, **kw):
     try:
-        r = session.get(url, timeout=TIMEOUT, headers={"User-Agent": UA},
-                        allow_redirects=True, **kw)
+        r = session.get(url, timeout=TIMEOUT, allow_redirects=True, **kw)
         return r
     except requests.RequestException:
         return None
+
+
+PRODUCT_LINK_RE = re.compile(
+    r'href=["\']((?:https?://[^"\'>]+)?/(?:products?|p|item|shop)/[a-zA-Z0-9\-_/.%]+)["\']')
+PRODUCT_LOC_RE = re.compile(r"/(?:products?|p|item)/")
+
+
+def _find_product_url(session, base, home_html):
+    """Locate a product page URL: homepage links first, then sitemap(s)."""
+    if home_html:
+        m = PRODUCT_LINK_RE.search(home_html)
+        if m:
+            return urljoin(base, m.group(1))
+    r = _get(session, urljoin(base, "/sitemap.xml"))
+    if r is None or r.status_code != 200:
+        return None
+    locs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", r.text)
+    # sitemap index: descend into the most product-ish child sitemap
+    child = next((u for u in locs if u.endswith(".xml") and "product" in u.lower()),
+                 None)
+    if child:
+        r2 = _get(session, child)
+        if r2 is not None and r2.status_code == 200:
+            locs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", r2.text)
+    for u in locs:
+        if PRODUCT_LOC_RE.search(u):
+            return u
+    return None
 
 
 def _extract_jsonld(html):
@@ -112,12 +141,17 @@ def scan(store_url):
     base = f"{parsed.scheme}://{parsed.netloc}"
 
     s = requests.Session()
+    s.headers["User-Agent"] = UA
     checks = []
 
     # Resolve canonical host (e.g. gymshark.com -> www.gymshark.com). Apex
     # domains sometimes 301 product URLs to checkout subdomains with no markup.
     home_html = None
     r = _get(s, base)
+    if r is None or r.status_code in (403, 429, 503):
+        # bot-challenged on the honest UA — retry the whole scan as a browser
+        s.headers["User-Agent"] = BROWSER_UA
+        r = _get(s, base)
     if r is not None and r.status_code == 200:
         home_html = r.text
         rp = urlparse(r.url)
@@ -241,11 +275,9 @@ def scan(store_url):
         handle = products_json[0].get("handle")
         if handle:
             product_url = urljoin(base, f"/products/{handle}")
-    if not product_url and home_html:
-        # fall back to a product link found on the homepage
-        m = re.search(r'href=["\'](/products/[a-z0-9\-]+)["\']', home_html, re.I)
-        if m:
-            product_url = urljoin(base, m.group(1))
+    if not product_url:
+        # generic discovery: homepage links, then sitemap(s)
+        product_url = _find_product_url(s, base, home_html)
 
     product_html = None
     if product_url:
