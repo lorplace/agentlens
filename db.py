@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS alerts (
     detail_json TEXT NOT NULL,
     seen INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS leads (
+    id INTEGER PRIMARY KEY,
+    email TEXT NOT NULL,
+    store_url TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(email, store_url)
+);
 """
 
 
@@ -122,3 +129,16 @@ def list_alerts(limit=50):
 def mark_alerts_seen():
     with _conn() as c:
         c.execute("UPDATE alerts SET seen = 1")
+
+
+def add_lead(email, store_url):
+    with _conn() as c:
+        c.execute("INSERT OR IGNORE INTO leads (email, store_url, created_at) "
+                  "VALUES (?, ?, ?)", (email, store_url, _now()))
+
+
+def list_leads(limit=500):
+    with _conn() as c:
+        rows = c.execute("SELECT email, store_url, created_at FROM leads "
+                         "ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]

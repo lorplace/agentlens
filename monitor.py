@@ -5,6 +5,7 @@ Run by Task Scheduler:  daily, see README.
 """
 
 import db
+import mailer
 import scanner
 
 
@@ -37,6 +38,7 @@ def diff_reports(prev, curr):
 def run_pass(verbose=True):
     """Scan every active store; record scans + alerts. Returns summary list."""
     results = []
+    regression_lines = []
     for store in db.list_stores():
         url = store["url"]
         try:
@@ -59,6 +61,11 @@ def run_pass(verbose=True):
                 db.record_alert(store["id"], "regression", summary,
                                 {"regressions": regs, "score_delta": delta})
                 line += f"  ⚠ REGRESSION: {summary}"
+                regression_lines.append(f"{url}: {summary}")
+                for reg in regs:
+                    regression_lines.append(
+                        f"   - {reg['check']}: {reg['from']} -> {reg['to']}. "
+                        f"{reg.get('fix') or ''}")
             elif imps:
                 summary = (f"Score {prev['score']}→{report['score']} "
                            f"({len(imps)} check(s) improved)")
@@ -69,6 +76,15 @@ def run_pass(verbose=True):
             print(line)
         results.append({"url": url, "score": report["score"],
                         "grade": report["grade"]})
+
+    if regression_lines and mailer.configured():
+        sent = mailer.send(
+            f"AgentLens: {len(regression_lines)} regression line(s) detected",
+            "Regressions found in today's monitoring pass:\n\n"
+            + "\n".join(regression_lines)
+            + "\n\nFull details in the dashboard.")
+        if verbose:
+            print(f"[email] alert {'sent' if sent else 'FAILED'}")
     return results
 
 

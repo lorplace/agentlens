@@ -54,6 +54,16 @@ Register-ScheduledTask -TaskName "AgentLens Daily Monitor" -Action $action -Trig
 
 Remove with: `Unregister-ScheduledTask -TaskName "AgentLens Daily Monitor"`.
 
+## v3: auth, lead capture, rate limiting, email alerts
+
+- **Auth**: `admin_pass` file next to the code (or `AGENTLENS_PASS` env) locks all
+  endpoints except `/` and `/scan`. No file = auth off (local dev).
+- **Lead capture**: public scans return a summary teaser; submitting an email
+  unlocks the full report and stores the lead. Admin sees leads at `/leads`.
+- **Rate limit**: 8 scans/minute per IP on the public endpoint.
+- **Email alerts**: create `email_config.json` (see mailer.py docstring) and the
+  daily monitor pass emails you a regression digest. No file = disabled.
+
 ## Roadmap to the real product
 
 1. **Lead magnet (now):** host this; free scans, email-gated full report.

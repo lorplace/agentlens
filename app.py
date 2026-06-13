@@ -47,16 +47,68 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+# ---------- rate limiting (in-memory, per IP) ----------
+from collections import defaultdict, deque
+import time as _time
+
+_hits = defaultdict(deque)
+
+
+def _limited(key, limit, window=60):
+    q = _hits[key]
+    now = _time.time()
+    while q and q[0] < now - window:
+        q.popleft()
+    if len(q) >= limit:
+        return True
+    q.append(now)
+    return False
+
+
+def _is_admin(req):
+    pw = _admin_pass()
+    return pw is None or bool(req.authorization and req.authorization.password == pw)
+
+
+def _valid_email(e):
+    return "@" in e and "." in e.split("@")[-1] and 5 <= len(e) <= 200
+
+
 @app.route("/scan")
 def scan():
     url = request.args.get("url", "").strip()
     if not url:
         return jsonify({"error": "Missing url parameter"}), 400
+    if _limited("scan:" + (request.remote_addr or "?"), 8):
+        return jsonify({"error": "Rate limit: try again in a minute."}), 429
     try:
         report = scanner.scan(url)
     except Exception as e:  # noqa: BLE001
         return jsonify({"error": f"Scan failed: {e}"}), 500
-    return jsonify(report)
+
+    if _is_admin(request):
+        return jsonify(report)
+
+    email = request.args.get("email", "").strip().lower()
+    if email and _valid_email(email):
+        db.add_lead(email, report["store"])
+        return jsonify(report)
+
+    # public, no email: summary teaser — statuses and scores, no details/fixes
+    slim = dict(report)
+    slim["gated"] = True
+    slim["checks"] = [{
+        "id": c["id"], "category": c["category"], "title": c["title"],
+        "status": c["status"], "points": c["points"],
+        "max_points": c["max_points"], "detail": "", "fix": None,
+    } for c in report["checks"]]
+    slim["fixes"] = []
+    return jsonify(slim)
+
+
+@app.route("/leads")
+def leads():
+    return jsonify(db.list_leads())
 
 
 # ---------- monitoring ----------

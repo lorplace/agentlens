@@ -3,3 +3,4 @@ __pycache__/
 debug_*.py
 scanner_sync.py
 admin_pass
+email_config.json
