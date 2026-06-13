@@ -184,8 +184,8 @@ function render(d){
   const fails = d.checks.filter(c=>c.status==='fail').length;
   const warns = d.checks.filter(c=>c.status==='warn').length;
   document.getElementById('summary').textContent = unsupported
-    ? 'No Shopify product feed detected — this may not be a Shopify store, or its storefront API is disabled. AgentLens scans Shopify stores; the checks below are informational only and the store is not graded.'
-    : `Shopify store detected. ${fails} critical issue(s), ${warns} warning(s). Scanned in ${d.duration_s}s.`;
+    ? 'Could not find a product page to inspect — the site may be blocking bots or may not be a storefront. Not graded.'
+    : `${d.mode === 'generic' ? 'Generic storefront scan (no Shopify feed detected). ' : 'Shopify store detected. '}${fails} critical issue(s), ${warns} warning(s). Scanned in ${d.duration_s}s.`;
 
   // gauge
   const arc = document.getElementById('arc');

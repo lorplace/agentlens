@@ -187,12 +187,16 @@ def scan(store_url):
                 fix="Fill in missing catalog fields in Shopify admin — agents skip products they can't fully parse.",
                 points=2, max_points=6))
     else:
+        # Generic mode: don't penalize non-Shopify stores for the feed —
+        # grade them on the platform-agnostic checks instead.
         checks.append(Check(
-            "feed_access", "Feed access", "Product feed publicly accessible",
-            "fail",
-            "/products.json is not accessible. Either this is not a Shopify store, the storefront API is disabled, or access is blocked.",
-            fix="If on Shopify, ensure the online store channel is active and not password-protected.",
-            points=0, max_points=25))
+            "feed_access", "Feed access", "Shopify product feed",
+            "info",
+            "No Shopify /products.json feed detected — running a generic storefront scan "
+            "(structured data, agent access, discoverability, render independence).",
+            fix="If this store IS on Shopify, the storefront may be password-protected or "
+                "the feed blocked — that alone hides the catalog from agents.",
+            points=0, max_points=0))
 
     # ---------- 2. robots.txt — agent access (20 pts) ----------
     blocked_agents, robots_found, sitemap_in_robots = [], False, False
@@ -371,6 +375,10 @@ def scan(store_url):
         if products_json:
             title = products_json[0].get("title", "")
         title_in_html = bool(title) and title.split("|")[0].strip()[:20].lower() in product_html.lower()
+        if not title:
+            # generic mode: no feed title to compare — use a server-rendered
+            # <h1> with text as the proxy for title presence in raw HTML
+            title_in_html = bool(re.search(r"<h1[^>]*>\s*[^<\s]", product_html))
         price_in_html = bool(re.search(r'(itemprop=["\']price["\']|"price"\s*:\s*"?\d|class=["\'][^"\']*price)', product_html, re.I))
         og = bool(re.search(r'property=["\']og:(title|image)["\']', product_html, re.I))
 
@@ -404,7 +412,8 @@ def scan(store_url):
         "score": score,
         "grade": grade,
         "is_shopify": bool(products_json),
-        "unsupported": not bool(products_json),
+        "mode": "shopify" if products_json else "generic",
+        "unsupported": not products_json and not product_html,
         "product_page_tested": product_url,
         "checks": [c.as_dict() for c in checks],
         "fixes": [{"title": c.title, "fix": c.fix} for c in checks if c.fix],
