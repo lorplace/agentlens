@@ -160,6 +160,11 @@ def alerts_seen():
     return jsonify({"ok": True})
 
 
+@app.route("/report")
+def report():
+    return jsonify(db.daily_report())
+
+
 @app.route("/run-monitor", methods=["POST"])
 def run_monitor():
     results = monitor.run_pass(verbose=False)

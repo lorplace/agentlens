@@ -131,6 +131,58 @@ def mark_alerts_seen():
         c.execute("UPDATE alerts SET seen = 1")
 
 
+def daily_report():
+    """Compile a past-period rollup: each store's latest score vs its previous
+    scan, plus alerts from the last 24h and summary stats."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    stores_out = []
+    deltas = []
+    with _conn() as c:
+        store_rows = c.execute(
+            "SELECT id, url FROM stores WHERE active = 1 ORDER BY url").fetchall()
+        for s in store_rows:
+            scans = c.execute(
+                "SELECT scanned_at, score, grade FROM scans WHERE store_id = ? "
+                "ORDER BY scanned_at DESC LIMIT 2", (s["id"],)).fetchall()
+            if not scans:
+                continue
+            cur = scans[0]
+            prev = scans[1] if len(scans) > 1 else None
+            delta = (cur["score"] - prev["score"]) if prev else None
+            if delta is not None:
+                deltas.append(delta)
+            stores_out.append({
+                "url": s["url"].replace("https://", "").replace("http://", ""),
+                "score": cur["score"], "grade": cur["grade"],
+                "scanned_at": cur["scanned_at"],
+                "prev_score": prev["score"] if prev else None,
+                "delta": delta,
+            })
+        recent_alerts = c.execute(
+            "SELECT a.created_at, a.severity, a.summary, s.url "
+            "FROM alerts a JOIN stores s ON s.id = a.store_id "
+            "WHERE a.created_at >= ? ORDER BY a.created_at DESC", (cutoff,)).fetchall()
+
+    scored = [s for s in stores_out if s["score"] is not None]
+    avg = round(sum(s["score"] for s in scored) / len(scored), 1) if scored else 0
+    return {
+        "generated_at": _now(),
+        "store_count": len(stores_out),
+        "avg_score": avg,
+        "regressions": sum(1 for d in deltas if d < 0),
+        "improvements": sum(1 for d in deltas if d > 0),
+        "unchanged": sum(1 for d in deltas if d == 0),
+        "movers": sorted([s for s in stores_out if s["delta"]],
+                         key=lambda s: s["delta"]),
+        "stores": stores_out,
+        "alerts_24h": [{"created_at": r["created_at"], "severity": r["severity"],
+                        "summary": r["summary"],
+                        "url": r["url"].replace("https://", "")}
+                       for r in recent_alerts],
+    }
+
+
 def add_lead(email, store_url):
     with _conn() as c:
         c.execute("INSERT OR IGNORE INTO leads (email, store_url, created_at) "

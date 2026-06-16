@@ -72,6 +72,15 @@
   .mbar button{margin-left:auto;background:var(--accent);border:0;color:#fff;
     padding:8px 16px;border-radius:10px;cursor:pointer;font-size:14px}
   .mbar button:disabled{opacity:.5;cursor:wait}
+  .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:6px}
+  .stat{background:var(--card);border-radius:var(--radius);padding:16px;text-align:center}
+  .stat b{display:block;font-size:26px}
+  .stat span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+  .stat.up b{color:var(--pass)} .stat.down b{color:var(--fail)}
+  .moverrow{display:flex;align-items:center;gap:12px;background:var(--card);
+    border-radius:var(--radius);padding:12px 16px;margin-bottom:8px}
+  .moverrow .d{margin-left:auto;font-weight:700}
+  .moverrow .d.up{color:var(--pass)} .moverrow .d.down{color:var(--fail)}
   .gatebox{background:linear-gradient(135deg,#1b2436,#151a22);border:1px solid var(--accent);
     border-radius:var(--radius);padding:22px;margin-top:26px;text-align:center}
   .gatebox b{font-size:17px}
@@ -99,8 +108,19 @@
     <div class="tabs">
       <button id="tabScan" class="active" onclick="showTab('scan')">Scan</button>
       <button id="tabMon" onclick="showTab('mon')">Monitoring <span id="alertCount"></span></button>
+      <button id="tabReport" onclick="showTab('report')">Daily report</button>
     </div>
   </header>
+
+  <div id="reportView" class="hidden">
+    <div class="mbar"><h3>Daily report</h3>
+      <button id="refreshReport" onclick="loadReport()">Refresh</button></div>
+    <div id="reportSummary"></div>
+    <div class="mbar"><h3>Movers (last scan vs previous)</h3></div>
+    <div id="reportMovers"></div>
+    <div class="mbar"><h3>All watched stores</h3></div>
+    <div id="reportStores"></div>
+  </div>
 
   <div id="monView" class="hidden">
     <div class="mbar"><h3>Watched stores</h3>
@@ -256,11 +276,49 @@ let lastScannedStore = null;
 function showTab(t){
   document.getElementById('tabScan').classList.toggle('active', t==='scan');
   document.getElementById('tabMon').classList.toggle('active', t==='mon');
+  document.getElementById('tabReport').classList.toggle('active', t==='report');
   document.getElementById('monView').classList.toggle('hidden', t!=='mon');
+  document.getElementById('reportView').classList.toggle('hidden', t!=='report');
+  // the scan report card only belongs to the scan tab
+  document.getElementById('report').classList.toggle('hidden', t!=='scan' || lastScannedStore===null);
   if(t==='mon'){ loadMonitor(); }
-  else if(lastScannedStore===null){ document.getElementById('report').classList.add('hidden'); }
-  if(t==='scan' && lastScannedStore!==null){ document.getElementById('report').classList.remove('hidden'); }
-  if(t==='mon'){ document.getElementById('report').classList.add('hidden'); }
+  if(t==='report'){ loadReport(); }
+}
+
+async function loadReport(){
+  const btn = document.getElementById('refreshReport');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try{
+    const d = await fetch('/report').then(r=>r.json());
+    const net = d.improvements - d.regressions;
+    document.getElementById('reportSummary').innerHTML = `
+      <div class="statgrid">
+        <div class="stat"><b>${d.store_count}</b><span>stores</span></div>
+        <div class="stat"><b>${d.avg_score}</b><span>avg score</span></div>
+        <div class="stat down"><b>${d.regressions}</b><span>regressed</span></div>
+        <div class="stat up"><b>${d.improvements}</b><span>improved</span></div>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin-top:10px">
+        Compiled ${d.generated_at.slice(0,16).replace('T',' ')} UTC ·
+        ${d.alerts_24h.length} alert(s) in last 24h · ${d.unchanged} unchanged</p>`;
+
+    document.getElementById('reportMovers').innerHTML = d.movers.length
+      ? d.movers.map(m=>`<div class="moverrow"><b>${m.url}</b>
+          <small style="color:var(--muted)">${m.prev_score} → ${m.score} ${m.grade}</small>
+          <span class="d ${m.delta>0?'up':'down'}">${m.delta>0?'+':''}${m.delta}</span></div>`).join('')
+      : '<p style="color:var(--muted)">No score changes since the previous scan. Stable is good.</p>';
+
+    document.getElementById('reportStores').innerHTML = d.stores.map(s=>`
+      <div class="moverrow"><b>${s.url}</b>
+        <small style="color:var(--muted)">last scan ${(s.scanned_at||'').slice(0,16).replace('T',' ')}</small>
+        <span class="d" style="color:${s.score!=null?gradeColor(s.score):'var(--muted)'}">
+          ${s.score!=null?s.score+' '+s.grade:'—'}</span></div>`).join('');
+  } catch(e){
+    document.getElementById('reportSummary').innerHTML =
+      '<p style="color:var(--fail)">Could not load report: '+e.message+'</p>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Refresh';
+  }
 }
 
 async function watchStore(){
